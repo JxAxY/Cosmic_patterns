@@ -1,25 +1,15 @@
-# Cosmic Generator (Streamlit)
+# Cosmic Generator (Streamlit) – Exact Moon Sign
 
-Public Streamlit app for the Cosmic Generator project. Loads the `cosmic_generator_v25.xlsx` workbook and provides:
-- Life Audit (conflicts + remedies)
-- Activity Timing Checker (Astrology × Numerology)
-- House Zone Checker (5 elements + Space) with Shapes
-- Element Items browser
+This app shows **both Sun and Moon signs** and lets the user choose which one to use.
+Moon sign uses **Swiss Ephemeris (pyswisseph)** for **exact** calculation from birthdate+time+timezone.
 
-## How to deploy on Streamlit Community Cloud
-
-1. Create a **public GitHub repo** (e.g., `cosmic-generator-app`).
-2. Add these files:
+## Deploy on Streamlit Community Cloud
+1. Create a public GitHub repo and upload:
    - `app.py`
    - `requirements.txt`
-   - `data/cosmic_generator_v25.xlsx`
-   - `README.md`
-3. Go to [share.streamlit.io](https://share.streamlit.io/) and connect your GitHub.
-4. Select your repo, set **Main file path** = `app.py`, and click **Deploy**.
+   - (optional) `data/cosmic_generator_vXX.xlsx` as a default
+2. On Streamlit Cloud, set main file path to `app.py` and deploy.
 
-## Updating the data
-- Replace `data/cosmic_generator_v25.xlsx` with a newer file (e.g., v26) and redeploy/restart the app.
-- Or allow the app's sidebar uploader to use a custom XLSX for your session.
-
-## Privacy
-- This sample app does not store user data or uploads on the server.
+## Using your latest workbook
+- The app works best if you **upload your latest `cosmic_generator_vXX.xlsx`** via the sidebar uploader at runtime.
+- This repo may include an older fallback in `/data`, but upload the newest for full features (Shape_Elements, etc.).
