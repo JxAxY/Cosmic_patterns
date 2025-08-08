@@ -10,14 +10,14 @@ import re
 
 st.set_page_config(page_title="Cosmic Generator", layout="wide")
 
-# ---------- Swiss Ephemeris (optional) ----------
+# --- Optional Swiss Ephemeris ---
 try:
     import swisseph as swe
     HAVE_SWE = True
 except Exception:
     HAVE_SWE = False
 
-# ---------- Helpers ----------
+# --- Helpers ---
 @st.cache_data(show_spinner=False)
 def load_workbook_bytes(b: bytes):
     return load_workbook(filename=BytesIO(b), data_only=True)
@@ -59,9 +59,7 @@ def sun_sign_from_date(d: dt.date):
     elif (m==2 and day>=19) or (m==3 and day<=20): return "Pisces"
     return ""
 
-def _deg_to_rad(x): return x * math.pi / 180.0
 def _rev(x): return x % 360.0
-
 def moon_longitude_approx_noon_utc(d: dt.date):
     year, month, day = d.year, d.month, d.day
     hour = 12.0
@@ -77,7 +75,7 @@ def moon_longitude_approx_noon_utc(d: dt.date):
     M  = _rev(357.5291092 + 35999.0502909*T - 0.0001536*T*T)
     Mp = _rev(134.9633964 + 477198.8675055*T + 0.0087414*T*T)
     F  = _rev(93.2720950 + 483202.0175233*T - 0.0036539*T*T)
-    Dr = _deg_to_rad(D); Mr = _deg_to_rad(M); Mpr = _deg_to_rad(Mp); Fr = _deg_to_rad(F)
+    Dr = math.radians(D); Mr = math.radians(M); Mpr = math.radians(Mp); Fr = math.radians(F)
     lon = (Lp
         + 6.289 * math.sin(Mpr)
         + 1.274 * math.sin(2*Dr - Mpr)
@@ -94,18 +92,17 @@ def moon_longitude_approx_noon_utc(d: dt.date):
 
 def moon_sign_exact(birthdate: dt.date, birthtime: dt.time, tz_offset: float):
     try:
-        hour_local = birthtime.hour + birthtime.minute/60 + birthtime.second/3600
-        hour_utc = hour_local - float(tz_offset)
-        jd = swe.julday(birthdate.year, birthdate.month, birthdate.day, hour_utc) if HAVE_SWE else None
-        if HAVE_SWE and jd is not None:
+        if HAVE_SWE:
+            hour_local = birthtime.hour + birthtime.minute/60 + birthtime.second/3600
+            hour_utc = hour_local - float(tz_offset)
+            jd = swe.julday(birthdate.year, birthdate.month, birthdate.day, hour_utc)
             pos = swe.calc_ut(jd, swe.MOON)[0]
             lon = float(pos[0])
             idx = int(lon // 30) % 12
             return ZODIAC[idx], lon, True
-        else:
-            lon = moon_longitude_approx_noon_utc(birthdate)
-            idx = int(lon // 30) % 12
-            return ZODIAC[idx], lon, False
+        lon = moon_longitude_approx_noon_utc(birthdate)
+        idx = int(lon // 30) % 12
+        return ZODIAC[idx], lon, False
     except Exception:
         lon = moon_longitude_approx_noon_utc(birthdate)
         idx = int(lon // 30) % 12
@@ -127,16 +124,16 @@ def safe_unique_list(series):
     except Exception:
         return []
 
-# ---------- Sidebar: data source ----------
+# --- Sidebar ---
 st.sidebar.title("Data Source")
-uploaded = st.sidebar.file_uploader("Upload a Cosmic Generator workbook (.xlsx)", type=["xlsx"], help="Upload latest vXX to use it live.")
+uploaded = st.sidebar.file_uploader("Upload a Cosmic Generator workbook (.xlsx)", type=["xlsx"])
 keep_master = st.sidebar.checkbox("Numerology: Keep master numbers (11/22/33)?", value=True)
 st.session_state["keep_master"] = keep_master
 
 raw = uploaded.getvalue() if uploaded else load_default_workbook()
 wb = load_workbook_bytes(raw) if raw else None
 
-# ---------- Load sheets ----------
+# Load sheets
 df_data         = get_sheet_df(wb, "Data")
 df_audit        = get_sheet_df(wb, "AuditData")
 df_elem_items   = get_sheet_df(wb, "Element_Items")
@@ -146,14 +143,7 @@ df_pref         = get_sheet_df(wb, "Element_Preferences")
 df_shapes       = get_sheet_df(wb, "Shape_Elements")
 df_guide        = get_sheet_df(wb, "Activity_Day_Guide")
 
-# Master lookup helper
-def get_sign_row(sign):
-    if df_data.empty or "Astrological Sign" not in df_data.columns:
-        return pd.Series(dtype=object)
-    row = df_data.loc[df_data["Astrological Sign"]==sign]
-    return row.iloc[0] if not row.empty else pd.Series(dtype=object)
-
-# ---------- Tabs ----------
+# Tabs
 tabs = st.tabs(["Inputs", "Life Audit", "Activity Timing", "House Zone Checker", "Items Browser"])
 
 # ===== Inputs =====
@@ -198,13 +188,12 @@ with tabs[0]:
     moon_sign, moon_lon, used_exact = moon_sign_exact(birthdate, birthtime, tz_offset)
     st.info(f"Sun: {sun_sign or '—'} | Moon: {moon_sign or '—'} {'(exact)' if used_exact else '(approx)'} | TZ: {tz_choice}")
 
-    use_choice = st.radio("Use which sign across the app?", ["Sun", "Moon"], horizontal=True)
-    selected_sign = sun_sign if use_choice == "Sun" else moon_sign
+    use_choice = st.radio("Use which sign across the app?", ["Sun","Moon"], horizontal=True)
+    selected_sign = sun_sign if use_choice=="Sun" else moon_sign
     st.session_state["selected_sign"] = selected_sign
 
-    # Full details for selected sign (from Data sheet)
     if not df_data.empty and "Astrological Sign" in df_data.columns and selected_sign:
-        row = df_data.loc[df_data["Astrological Sign"] == selected_sign]
+        row = df_data.loc[df_data["Astrological Sign"]==selected_sign]
         if not row.empty:
             info = row.iloc[0].to_dict()
             info_clean = {k: v for k,v in info.items() if pd.notna(v) and str(v) != ""}
@@ -212,161 +201,131 @@ with tabs[0]:
             st.write("**Sign Details (from Data sheet):**")
             st.dataframe(df_show, use_container_width=True, hide_index=True)
 
-# ===== Life Audit (v8 Fast Track) =====
+# ===== Life Audit (v9 matching) =====
 with tabs[1]:
-    st.subheader("Life Audit – Conflicts & Remedies (v8)")
+    st.subheader("Life Audit – Conflicts & Remedies")
     selected_sign = st.session_state.get("selected_sign","")
     if not selected_sign:
         st.warning("Go to Inputs and choose Sun or Moon first.")
-    st.caption("Add multiple items per box (comma-separated). We'll flag STRONG/MILD conflicts and suggest top fixes.")
+    st.caption("Comma-separated lists. Smarter matching with phrases and word boundaries.")
 
-    # Input categories (textarea for multiple tokens)
     config = [
-        ("Colours / Décor", "Avoid Household (strong)", "Avoid Household (mild)", "Colour", "Household Items"),
-        ("Foods", "Avoid Foods (strong)", "Avoid Foods (mild)", "Foods", "Foods"),
-        ("Crystals & Gemstones", "Avoid Crystals (strong)", "Avoid Crystals (mild)", "Primary Crystals", "Alternative Crystals / Gemstones"),
-        ("Activities", "Avoid Activities (strong)", "Avoid Activities (mild)", "Favorable Activities", "Favorable Activities"),
-        ("Elements", "Avoid Elements (strong)", "Avoid Elements (mild)", "Element", "Element"),
-        ("People (Signs)", "Enemy Signs (strong)", "Enemy Signs (mild)", None, None),
+        ("Colours / Décor", "Avoid Household (strong)", "Avoid Household (mild)", "Colour", "Household Items", "general"),
+        ("Foods", "Avoid Foods (strong)", "Avoid Foods (mild)", "Foods", "Foods", "general"),
+        ("Crystals & Gemstones", "Avoid Crystals (strong)", "Avoid Crystals (mild)", "Primary Crystals", "Alternative Crystals / Gemstones", "general"),
+        ("Activities", "Avoid Activities (strong)", "Avoid Activities (mild)", "Favorable Activities", "Favorable Activities", "names_only"),
+        ("Elements", "Avoid Elements (strong)", "Avoid Elements (mild)", "Element", "Element", "general"),
+        ("People (Signs)", "Enemy Signs (strong)", "Enemy Signs (mild)", None, None, "names_only"),
     ]
 
-    # Simple synonym map & normalizer
-    SYN = {
-        "sofa":"sofa","couch":"sofa",
-        "fridge":"fridge","refrigerator":"fridge","freezer":"fridge",
-        "phone":"phone","mobile":"phone","cell phone":"phone","cellphone":"phone",
-        "grey":"gray","rose gold":"gold",
-        "laptop":"computer","pc":"computer","desktop":"computer",
-        "trash":"bin","trash can":"bin","garbage":"bin","garbage can":"bin","dustbin":"bin",
-        "loo":"toilet","wc":"toilet","lavatory":"toilet",
-        "aqua":"water",
-    }
-    def normalize_token(t):
-        t = re.sub(r"[^a-z0-9\s\-]", "", t.lower()).strip()
-        t = re.sub(r"\s+", " ", t)
-        t = SYN.get(t, t)
-        # simple singular
-        if t.endswith("es"): t = t[:-2]
-        elif t.endswith("s") and len(t)>3: t = t[:-1]
-        return t
+    def tokenize(user_text, mode):
+        if not user_text: return []
+        # split only on commas/newlines; keep phrases
+        parts = re.split(r"[,\\n]", user_text)
+        tokens = []
+        for p in parts:
+            t = re.sub(r"\s+", " ", p.strip().lower())
+            if t:
+                tokens.append(t)
+        return tokens
 
-    def split_tokens(s):
-        if not s: return []
-        # split by comma or newline
-        raw = re.split(r"[,\\n]", s)
-        tokens = [normalize_token(x) for x in raw if x and x.strip()]
-        # also split on spaces for multi-word variants (keep originals too)
-        extras = []
-        for t in tokens:
-            parts = t.split(" ")
-            if len(parts)>1:
-                extras.extend([p for p in parts if p])
-        return list(dict.fromkeys(tokens + extras))  # unique, keep order
+    def normalize_list(csv_str):
+        if not csv_str: return []
+        terms = [re.sub(r"\s+", " ", x.strip().lower()) for x in str(csv_str).split(",")]
+        return [t for t in terms if t]
 
-    # Build audit lookup for chosen sign
-    def lookup_avoid(col):
-        if df_audit.empty or "Astrological Sign" not in df_audit.columns or col not in df_audit.columns:
-            return []
-        row = df_audit.loc[df_audit["Astrological Sign"]==selected_sign]
-        if row.empty: return []
-        raw = str(row.iloc[0][col] or "")
-        toks = [normalize_token(x) for x in re.split(r",", raw) if x and x.strip()]
-        return list(dict.fromkeys(toks))
+    def match_token(tok, strong_terms, mild_terms):
+        # exact first
+        if tok in strong_terms: return "STRONG", tok
+        if tok in mild_terms:   return "MILD", tok
+        # word-boundary contains: token in term or term in token
+        for term in strong_terms:
+            if re.search(rf"\\b{re.escape(tok)}\\b", term) or re.search(rf"\\b{re.escape(term)}\\b", tok):
+                return "STRONG", term
+        for term in mild_terms:
+            if re.search(rf"\\b{re.escape(tok)}\\b", term) or re.search(rf"\\b{re.escape(term)}\\b", tok):
+                return "MILD", term
+        # fallback substring (less strict)
+        for term in strong_terms:
+            if tok in term or term in tok:
+                return "STRONG", term
+        for term in mild_terms:
+            if tok in term or term in tok:
+                return "MILD", term
+        return "OK", ""
 
     results_rows = []
     summary_rows = []
 
-    # Create 2-column layout per row of categories
-    for idx, (label,strong_col,mild_col,rem1,rem2) in enumerate(config):
-        st.markdown(f"**{label}**")
-        user_text = st.text_area(f"My {label} (comma-separated)", key=f"la8_{idx}", height=60, placeholder="e.g., blue, rose gold, marble")
-        tokens = split_tokens(user_text)
+    for (label, col_strong, col_mild, rem1, rem2, mode) in config:
+        user_text = st.text_area(f"My {label}", key=f"la9_{label}", height=60, placeholder="e.g., blue, rose gold, marble" if mode!="names_only" else "e.g., Aries, Scorpio")
+        tokens = tokenize(user_text, mode)
 
-        strong_set = set(lookup_avoid(strong_col))
-        mild_set   = set(lookup_avoid(mild_col))
+        if df_audit.empty or "Astrological Sign" not in df_audit.columns:
+            st.caption(f"_No rules found for {label} (AuditData missing)._")
+            continue
+        row = df_audit.loc[df_audit["Astrological Sign"]==selected_sign]
+        if row.empty:
+            st.caption(f"_No rules for {selected_sign} in {label}._")
+            continue
 
-        strong_hits = 0
-        mild_hits = 0
+        strong_terms = normalize_list(row.iloc[0].get(col_strong, ""))
+        mild_terms   = normalize_list(row.iloc[0].get(col_mild, ""))
 
-        for tok in tokens or [""]:
-            if not tok:
-                continue
-            verdict, matched = "OK", ""
-            # exact
-            if tok in strong_set:
-                verdict, matched = "STRONG", tok
-            elif tok in mild_set:
-                verdict, matched = "MILD", tok
-            else:
-                # substring match
-                if any(tok and tok in x for x in strong_set):
-                    verdict, matched = "STRONG", next(x for x in strong_set if tok in x)
-                elif any(tok and tok in x for x in mild_set):
-                    verdict, matched = "MILD", next(x for x in mild_set if tok in x)
-            if verdict=="STRONG": strong_hits += 1
-            elif verdict=="MILD": mild_hits += 1
-            results_rows.append((label, tok, verdict, matched))
+        strong_hits = mild_hits = 0
+        if tokens:
+            for tok in tokens:
+                verdict, src = match_token(tok, strong_terms, mild_terms)
+                if verdict=="STRONG": strong_hits += 1
+                elif verdict=="MILD": mild_hits += 1
+                results_rows.append((label, tok, verdict, src))
+        else:
+            results_rows.append((label, "", "OK", ""))
 
-        # Priority remedies (Top 3) for this category
         fixes = []
-        sign_row = get_sign_row(selected_sign)
-        if strong_hits>0:
-            if label=="Colours / Décor":
-                if "Colour" in sign_row:
-                    fixes.append(f"Switch to favourable colours: {sign_row['Colour']}")
-                if "Shape" in sign_row:
-                    fixes.append(f"Favor shapes: {sign_row['Shape']}")
-                if "Element" in sign_row:
-                    fixes.append(f"Use décor that expresses {sign_row['Element']} element")
-            elif label=="Foods":
-                if "Foods" in sign_row:
-                    fixes.append(f"Prioritize: {sign_row['Foods']}")
-                if "Avoid Foods (mild)" in df_audit.columns:
-                    fixes.append("Reduce flagged foods; phase out strong conflicts first")
-                fixes.append("Hydration and simple, whole foods for 7 days")
-            elif label=="Crystals & Gemstones":
-                if "Primary Crystals" in sign_row:
-                    fixes.append(f"Carry/wear: {sign_row['Primary Crystals']}")
-                if "Alternative Crystals / Gemstones" in sign_row:
-                    fixes.append(f"Alternate set: {sign_row['Alternative Crystals / Gemstones']}")
-                fixes.append("Cleanse & charge crystals weekly")
-            elif label=="Activities":
-                if "Favorable Activities" in sign_row:
-                    fixes.append(f"Swap to: {sign_row['Favorable Activities']}")
-                fixes.append("Schedule during your good weekday or number (see Activity Timing)")
-            elif label=="Elements":
-                if "Element" in sign_row:
-                    fixes.append(f"Emphasize {sign_row['Element']} items; avoid opposing element clusters")
-                fixes.append("Add 1-2 supportive items (colour/crystal) before removing big items")
-            elif label=="People (Signs)":
-                fixes.append("Reduce exposure to strong enemy-sign dynamics")
-                fixes.append("Set clear boundaries; favor cooperative signs from your Data sheet if listed")
-                fixes.append("Choose neutral/shared‑element activities")
+        # Pull remedies from Data sheet if present
+        if not df_data.empty and "Astrological Sign" in df_data.columns:
+            drow = df_data.loc[df_data["Astrological Sign"]==selected_sign]
+            if not drow.empty:
+                drow = drow.iloc[0]
+                if strong_hits>0:
+                    if label=="Colours / Décor" and "Colour" in drow:
+                        fixes.append(f"Switch to favourable colours: {drow['Colour']}")
+                    if label=="Foods" and "Foods" in drow:
+                        fixes.append(f"Prioritize: {drow['Foods']}")
+                    if label=="Crystals & Gemstones":
+                        if "Primary Crystals" in drow: fixes.append(f"Carry/wear: {drow['Primary Crystals']}")
+                        if "Alternative Crystals / Gemstones" in drow: fixes.append(f"Alternate set: {drow['Alternative Crystals / Gemstones']}")
+                    if label=="Activities" and "Favorable Activities" in drow:
+                        fixes.append(f"Swap to: {drow['Favorable Activities']}")
+                    if label=="Elements" and "Element" in drow:
+                        fixes.append(f"Emphasize {drow['Element']} items")
+                    if label=="People (Signs)":
+                        fixes.append("Reduce strong enemy-sign dynamics; choose neutral/shared-element activities")
+                elif mild_hits>0:
+                    if label in ("Colours / Décor","Elements","Crystals & Gemstones"):
+                        fixes.append("Balance with supportive colours/crystals of your element")
+                    if label=="Foods":
+                        fixes.append("Moderate intake; avoid combos with other flagged foods")
+                    if label=="Activities":
+                        fixes.append("Do on a favourable weekday/number to offset mild conflicts")
+                    if label=="People (Signs)":
+                        fixes.append("Choose neutral settings; keep interactions short")
+        fixes = fixes[:3]
+        summary_rows.append((label, strong_hits, mild_hits, ", ".join(fixes)))
 
-        elif mild_hits>0:
-            if label in ("Colours / Décor","Elements","Crystals & Gemstones"):
-                fixes.append("Balance with supportive colours/crystals of your element")
-            if label=="Foods":
-                fixes.append("Moderate intake; avoid combos with other flagged foods")
-            if label=="Activities":
-                fixes.append("Do on a favourable weekday/number to offset mild conflicts")
-            if label=="People (Signs)":
-                fixes.append("Choose neutral settings; short interactions")
-
-        # keep only top 3
-        fixes = [f for f in fixes if f][:3]
-        summary_rows.append((label, strong_hits, mild_hits, ", ".join(fixes) if fixes else ""))
-
-    # Show detailed token results and category summary
+    # Render results
     colA, colB = st.columns([2,1])
     with colA:
-        df_res = pd.DataFrame(results_rows, columns=["Category","Token","Conflict","Matched Term"])
-        st.write("**Token-by-token results**")
-        st.dataframe(df_res, use_container_width=True)
+        if results_rows:
+            df_res = pd.DataFrame(results_rows, columns=["Category","Token","Conflict","Why flagged (matched term)"])
+            st.write("**Token-by-token results**")
+            st.dataframe(df_res, use_container_width=True)
     with colB:
-        df_sum = pd.DataFrame(summary_rows, columns=["Category","STRONG hits","MILD hits","Top fixes"])
-        st.write("**Category summary**")
-        st.dataframe(df_sum, use_container_width=True)
+        if summary_rows:
+            df_sum = pd.DataFrame(summary_rows, columns=["Category","STRONG","MILD","Top fixes"])
+            st.write("**Category summary**")
+            st.dataframe(df_sum, use_container_width=True)
 
 # ===== Activity Timing =====
 with tabs[2]:
